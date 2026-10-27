@@ -10,20 +10,20 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         if(args.Length == 2 && args[0] == "--self-test") { Tests.Run(args[1]); return; }
         using var mutex = new Mutex(true, @"Local\BrightnessToggle.WinForms", out bool first);
-        if(!first) { MessageBox.Show("이미 실행 중입니다. 트레이의 밝기 전환 아이콘을 확인하세요."); return; }
+        if(!first) { MessageBox.Show("이미 실행 중입니다. 트레이의 밝기 전환 아이콘을 확인하세요.", "Brightness Toggle", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         try { Application.Run(new MainForm()); }
-        catch(Exception ex) { MessageBox.Show("실행 실패: " + ex.Message); }
+        catch(Exception ex) { MessageBox.Show("실행 실패: " + ex.Message, "Brightness Toggle", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
 }
 internal sealed class Preset
 {
     public string Name { get; set; } = "새 프리셋";
     public int Amount { get; set; } = 25;
-    public override string ToString() => $"{Name}   ({Amount:+0;-0;0}%)";
+    public override string ToString() => $"{Name}   (밝기 {100+Amount}%)";
 }
 internal sealed class Config
 {
-    public List<Preset> Presets { get; set; } = [new() {Name="default",Amount=0}, new() {Name="+25%",Amount=25}];
+    public List<Preset> Presets { get; set; } = [new() {Name="default",Amount=-20}, new() {Name="+25%",Amount=25}];
     public int Hotkey { get; set; } = (int)Keys.F9;
     public string Monitor { get; set; } = "";
     internal static readonly string FileName=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BrightnessToggle","settings.json");
@@ -34,8 +34,8 @@ internal sealed class Config
     internal void Normalize()
     {
         Presets ??= []; Presets=Presets.Where(p=>p!=null).ToList();
-        if(Presets.Count==0 || Presets[0].Name!="default") Presets.Insert(0,new(){Name="default",Amount=0});
-        Presets[0].Amount=0;
+        if(Presets.Count==0 || Presets[0].Name!="default") Presets.Insert(0,new(){Name="default",Amount=-20});
+        Presets[0].Amount=-20;
         foreach(var p in Presets) { p.Name=string.IsNullOrWhiteSpace(p.Name)?"프리셋":p.Name.Trim(); p.Amount=Math.Clamp(p.Amount,-50,100); }
         if(!ValidHotkey(Hotkey)) Hotkey=(int)Keys.F9;
     }
@@ -123,7 +123,7 @@ internal sealed class Osd : Form
     protected override CreateParams CreateParams { get { var p=base.CreateParams;p.ExStyle|=0x08000000|0x20|0x80;return p; } }
     internal void Notify(Screen screen,string name,int amount)
     {
-        title.Text=name; detail.Text=amount==0?"밝기: default · 원래 화면":"밝기 보정: "+amount.ToString("+0;-0;0")+"%";
+        title.Text=name; detail.Text=$"밝기: {100+amount}% · 보정 {amount:+0;-0;0}%";
         var area=screen.WorkingArea; Location=new Point(area.Right-Width-24,area.Bottom-Height-24);
         Show(); Native.SetWindowPos(Handle,new IntPtr(-1),Left,Top,Width,Height,0x10|0x40);
         timer.Stop();timer.Start();
@@ -139,7 +139,7 @@ internal sealed class MainForm : Form
     private readonly TextBox nameBox=new(){Dock=DockStyle.Fill,MaxLength=36};
     private readonly TrackBar slider=new(){Dock=DockStyle.Fill,Minimum=-50,Maximum=100,TickFrequency=25,AutoSize=false,Height=44};
     private readonly Label amount=new(){AutoSize=true};
-    private readonly Label current=new(){AutoSize=true,Text="현재: default · 원래 화면"};
+    private readonly Label current=new(){AutoSize=true,Text="현재: 원래 화면 · 100%"};
     private readonly Label status=new(){AutoSize=true,ForeColor=Color.DimGray};
     private readonly ComboBox monitorBox=new(){Dock=DockStyle.Fill,DropDownStyle=ComboBoxStyle.DropDownList};
     private readonly ComboBox hotkeys=new(){Dock=DockStyle.Fill,DropDownStyle=ComboBoxStyle.DropDownList};
@@ -149,15 +149,15 @@ internal sealed class MainForm : Form
     private readonly Label trayHint=new(){AutoSize=true,Text="X를 누르면 시스템 트레이로 숨겨집니다. 완전 종료: 트레이 우클릭 → 종료",ForeColor=Color.DimGray};
     private readonly Osd osd=new();
     private bool loading,quitting,registered,resourcesDisposed;
-    private int active;
-    private string appliedName="default";
+    private int active=-1;
+    private string appliedName="원래 화면";
     private int appliedAmount;
     private bool changingMonitor,changingHotkey;
     internal int Active=>active;
     internal MainForm(Config? supplied=null,IBrightness? backend=null,bool test=false)
     {
         testing=test;config=supplied??Config.Load();config.Normalize();brightness=backend??new GammaBrightness();
-        Text="Brightness Toggle 1.0.0 · 밝기 프리셋";Font=new Font("맑은 고딕",10);ClientSize=new Size(760,640);
+        Text="Brightness Toggle 1.0.1 · 밝기 프리셋";Font=new Font("맑은 고딕",10);ClientSize=new Size(760,640);
         MinimumSize=new Size(760,680);StartPosition=FormStartPosition.CenterScreen;
         var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(22),ColumnCount=2,RowCount=6};
         root.ColumnStyles.Add(new(SizeType.Absolute,235));root.ColumnStyles.Add(new(SizeType.Percent,100));
@@ -174,33 +174,33 @@ internal sealed class MainForm : Form
         edit.Controls.Add(new Label{Text="대상 디스플레이",AutoSize=true});edit.Controls.Add(monitorBox);
         edit.Controls.Add(new Label{Text="전환 단축키 (한 번 누르면 다음 프리셋)",AutoSize=true});edit.Controls.Add(hotkeys);
         root.Controls.Add(edit,1,1);
-        var actions=new FlowLayoutPanel{Dock=DockStyle.Fill};AddButton(actions,"다음 프리셋",(_,_)=>Next());AddButton(actions,"default 복원",(_,_)=>Apply(0));root.Controls.Add(actions,0,2);root.SetColumnSpan(actions,2);
+        var actions=new FlowLayoutPanel{Dock=DockStyle.Fill};AddButton(actions,"다음 프리셋",(_,_)=>Next());AddButton(actions,"default (80%)",(_,_)=>Apply(0));root.Controls.Add(actions,0,2);root.SetColumnSpan(actions,2);
         root.Controls.Add(current,0,3);root.SetColumnSpan(current,2);root.Controls.Add(status,0,4);root.SetColumnSpan(status,2);root.Controls.Add(trayHint,0,5);root.SetColumnSpan(trayHint,2);Controls.Add(root);
         foreach(var screen in Screen.AllScreens) monitorBox.Items.Add(screen.DeviceName);
         if(monitorBox.Items.Count==0) throw new InvalidOperationException("디스플레이를 찾을 수 없습니다.");
         monitorBox.SelectedItem=config.Monitor;if(monitorBox.SelectedIndex<0)monitorBox.SelectedItem=(Screen.PrimaryScreen??Screen.AllScreens[0]).DeviceName;
         for(int i=1;i<=11;i++)hotkeys.Items.Add((Keys)((int)Keys.F1+i-1));hotkeys.SelectedItem=(Keys)config.Hotkey;
-        var menu=new ContextMenuStrip();menu.Items.Add("다음 프리셋",null,(_,_)=>Next());menu.Items.Add("default 복원",null,(_,_)=>Apply(0));menu.Items.Add("설정 열기",null,(_,_)=>{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add(new ToolStripSeparator());menu.Items.Add("종료 (원래 밝기 복원)",null,(_,_)=>Exit());
+        var menu=new ContextMenuStrip();menu.Items.Add("다음 프리셋",null,(_,_)=>Next());menu.Items.Add("default (80%)",null,(_,_)=>Apply(0));menu.Items.Add("설정 열기",null,(_,_)=>{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add(new ToolStripSeparator());menu.Items.Add("종료 (원래 밝기 복원)",null,(_,_)=>Exit());
         using(var stream=typeof(MainForm).Assembly.GetManifestResourceStream("BrightnessToggle.Assets.brightness.ico") ?? throw new InvalidOperationException("밝기 아이콘을 읽을 수 없습니다."))
         using(var sourceIcon=new Icon(stream)) brightnessIcon=(Icon)sourceIcon.Clone();
         Icon=brightnessIcon;
-        tray=new NotifyIcon{Icon=brightnessIcon,Text="밝기: default",ContextMenuStrip=menu,Visible=!testing};tray.DoubleClick+=(_,_)=>Next();
+        tray=new NotifyIcon{Icon=brightnessIcon,Text="밝기: 원래 화면 (100%)",ContextMenuStrip=menu,Visible=!testing};tray.DoubleClick+=(_,_)=>Next();
         list.SelectedIndexChanged+=(_,_)=>LoadSelection();nameBox.TextChanged+=(_,_)=>EditName();slider.ValueChanged+=(_,_)=>EditAmount();
         preview.CheckedChanged+=(_,_)=>{if(preview.Checked)ApplySelected();};
         monitorBox.SelectedIndexChanged+=(_,_)=>ChangeMonitor();hotkeys.SelectedIndexChanged+=(_,_)=>RegisterKey();
         FormClosing+=HandleClosing;SystemEvents.SessionEnding+=SessionEnding;
         RefreshList(0);config.Monitor=(string)monitorBox.SelectedItem!;
-        Shown+=(_,_)=>{RegisterKey();status.Text=registered?"트레이에서 계속 실행 · HDR/독점 전체 화면에서는 적용이 제한될 수 있습니다.":status.Text;};
+        Shown+=(_,_)=>{RegisterKey();Apply(0);};
     }
     private static void AddButton(Control parent,string text,EventHandler handler) {var b=new Button{Text=text,AutoSize=true,Height=34};b.Click+=handler;parent.Controls.Add(b);}
     private void RefreshList(int selected) {loading=true;list.Items.Clear();foreach(var p in config.Presets)list.Items.Add(p);list.SelectedIndex=Math.Clamp(selected,0,list.Items.Count-1);loading=false;LoadSelection();}
     private void LoadSelection()
     {
-        if(loading||list.SelectedIndex<0)return;loading=true;var p=config.Presets[list.SelectedIndex];nameBox.Text=p.Name;slider.Value=p.Amount;amount.Text="밝기 보정: "+p.Amount.ToString("+0;-0;0")+"%";nameBox.Enabled=slider.Enabled=list.SelectedIndex!=0;loading=false;
+        if(loading||list.SelectedIndex<0)return;loading=true;var p=config.Presets[list.SelectedIndex];nameBox.Text=p.Name;slider.Value=p.Amount;amount.Text=$"밝기: {100+p.Amount}% (보정 {p.Amount:+0;-0;0}%)";nameBox.Enabled=slider.Enabled=list.SelectedIndex!=0;loading=false;
     }
     private void EditName() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Name=string.IsNullOrWhiteSpace(nameBox.Text)?"프리셋":nameBox.Text.Trim();RefreshItem(i);Save();}
     private void RefreshItem(int i) {loading=true;list.Items[i]=config.Presets[i];loading=false;}
-    private void EditAmount() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Amount=slider.Value;amount.Text="밝기 보정: "+slider.Value.ToString("+0;-0;0")+"%";RefreshItem(i);Save();if(preview.Checked)Apply(i);}
+    private void EditAmount() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Amount=slider.Value;amount.Text=$"밝기: {100+slider.Value}% (보정 {slider.Value:+0;-0;0}%)";RefreshItem(i);Save();if(preview.Checked)Apply(i);}
     internal void AddPreset() {config.Presets.Add(new(){Name="프리셋 "+config.Presets.Count,Amount=25});RefreshList(config.Presets.Count-1);Save();}
     internal void RemovePreset() {int i=list.SelectedIndex;if(i<=0)return;if(active==i&&!Apply(0))return;config.Presets.RemoveAt(i);if(active>i)active--;RefreshList(Math.Min(i,config.Presets.Count-1));Save();}
     internal void Next()=>Apply((active+1)%config.Presets.Count);
@@ -213,15 +213,15 @@ internal sealed class MainForm : Form
     private Screen TargetScreen()=>Screen.AllScreens.FirstOrDefault(s=>s.DeviceName==(string)monitorBox.SelectedItem!)??Screen.PrimaryScreen??Screen.AllScreens[0];
     private void UpdateCurrent()
     {
-        current.Text=$"현재: {appliedName} · {appliedAmount:+0;-0;0}%";
-        string text=$"밝기: {appliedName} {appliedAmount:+0;-0;0}%";
+        current.Text=$"현재: {appliedName} · 밝기 {100+appliedAmount}%";
+        string text=$"밝기: {appliedName} ({100+appliedAmount}%)";
         tray.Text=text[..Math.Min(63,text.Length)];
     }
     private void ChangeMonitor()
     {
         if(changingMonitor)return;
         string old=config.Monitor;
-        try {brightness.RestoreAll();active=0;appliedName="default";appliedAmount=0;config.Monitor=(string)monitorBox.SelectedItem!;UpdateCurrent();Save();}
+        try {brightness.RestoreAll();active=-1;appliedName="원래 화면";appliedAmount=0;config.Monitor=(string)monitorBox.SelectedItem!;UpdateCurrent();Save();Apply(0);}
         catch(Exception ex)
         {
             status.Text=ex.Message;
@@ -249,7 +249,7 @@ internal sealed class MainForm : Form
             if(!testing)tray.ShowBalloonTip(3500,"밝기 프로그램이 트레이에서 실행 중입니다", "작업 표시줄 오른쪽의 해 아이콘을 확인하세요. 숨겨져 있으면 ∧를 누르세요. 설정/종료: 아이콘 우클릭",ToolTipIcon.Info);
             return;
         }
-        try{brightness.RestoreAll();}catch(Exception ex){if(e.CloseReason!=CloseReason.WindowsShutDown&&!testing){e.Cancel=true;quitting=false;Show();MessageBox.Show(this,ex.Message+"\n복원을 다시 시도한 뒤 종료하세요.");}}
+        try{brightness.RestoreAll();}catch(Exception ex){if(e.CloseReason!=CloseReason.WindowsShutDown&&!testing){e.Cancel=true;quitting=false;Show();MessageBox.Show(this,ex.Message+"\n복원을 다시 시도한 뒤 종료하세요.","Brightness Toggle",MessageBoxButtons.OK,MessageBoxIcon.Warning);}}
     }
     private void SessionEnding(object? sender,SessionEndingEventArgs e){try{brightness.RestoreAll();}catch{}}
     internal void Exit(){quitting=true;Close();}
@@ -277,7 +277,10 @@ internal static class Tests
             foreach(int a in new[]{-50,25,100}){var ramp=GammaBrightness.Curve(baseline,a);for(int c=0;c<3;c++)for(int i=1;i<256;i++)if(ramp[c*256+i]<ramp[c*256+i-1])throw new Exception("nonmonotonic ramp");}
             if(GammaBrightness.Curve(baseline,25)[128]<=baseline[128])throw new Exception("brightness direction");
             var config=new Config();var fake=new Fake();
-            using(var form=new MainForm(config,fake,true)){form.Show();Application.DoEvents();
+            var migrated=new Config{Presets=[new(){Name="default",Amount=0},new(){Name="custom",Amount=45}]};migrated.Normalize();
+            if(migrated.Presets[0].Amount!=-20||migrated.Presets[1].Amount!=45)throw new Exception("default migration");
+            if(GammaBrightness.Curve(baseline,-20)[128]>=baseline[128])throw new Exception("80 percent curve");
+            using(var form=new MainForm(config,fake,true)){form.Show();Application.DoEvents();if(form.Active!=0||fake.Amount!=-20)throw new Exception("startup default 80");
             using(var osd=new Osd())
             {
                 osd.Notify(Screen.PrimaryScreen??Screen.AllScreens[0],"+25%",25);Application.DoEvents();
@@ -285,8 +288,8 @@ internal static class Tests
                 using var shot=new Bitmap(osd.Width,osd.Height);osd.DrawToBitmap(shot,new Rectangle(Point.Empty,osd.Size));shot.Save(Path.Combine(Path.GetDirectoryName(path)!,"brightness-osd.png"));osd.Hide();
             }
             using(var image=new Bitmap(form.Width,form.Height)){form.DrawToBitmap(image,new Rectangle(Point.Empty,form.Size));image.Save(Path.ChangeExtension(path,".png"));}
-            form.Next();if(form.Active!=1||fake.Amount!=25)throw new Exception("cycle plus");form.Next();if(form.Active!=0||fake.Amount!=0)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=3)throw new Exception("add");form.Apply(2);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=2)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
-            File.WriteAllText(path,"PASS: default/+25 cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
+            form.Next();if(form.Active!=1||fake.Amount!=25)throw new Exception("cycle plus");form.Next();if(form.Active!=0||fake.Amount!=-20)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=3)throw new Exception("add");form.Apply(2);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=2)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
+            File.WriteAllText(path,"PASS: default 80%, old config migration, startup default, default/+25 cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
         }catch(Exception ex){File.WriteAllText(path,"FAIL: "+ex);Environment.ExitCode=1;}
     }
 }
