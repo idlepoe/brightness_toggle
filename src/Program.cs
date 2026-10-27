@@ -157,7 +157,7 @@ internal sealed class MainForm : Form
     internal MainForm(Config? supplied=null,IBrightness? backend=null,bool test=false)
     {
         testing=test;config=supplied??Config.Load();config.Normalize();brightness=backend??new GammaBrightness();
-        Text="Brightness Toggle · 밝기 프리셋";Font=new Font("맑은 고딕",10);ClientSize=new Size(760,640);
+        Text="Brightness Toggle 1.0.0 · 밝기 프리셋";Font=new Font("맑은 고딕",10);ClientSize=new Size(760,640);
         MinimumSize=new Size(760,680);StartPosition=FormStartPosition.CenterScreen;
         var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(22),ColumnCount=2,RowCount=6};
         root.ColumnStyles.Add(new(SizeType.Absolute,235));root.ColumnStyles.Add(new(SizeType.Percent,100));
