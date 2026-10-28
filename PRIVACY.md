@@ -10,11 +10,11 @@ The application does not collect, transmit, sell, or share personal information.
 
 ## Local settings
 
-The application stores preset names, gamma correction amounts, the selected display identifier, and the configured hotkey in a local settings file. These settings remain on your device. Windows may redirect packaged application settings into its per-user package storage.
+The application stores preset names, gamma correction amounts, black preservation and contrast values, the selected display identifier, language, configured hotkey, selected executable name, automatic-switching preference, and automatic preset in a local settings file. These settings remain on your device. Windows may redirect packaged application settings into its per-user package storage.
 
 ## Device access
 
-The application accesses display gamma controls and registers a global preset-switching hotkey. It does not record general keyboard input, read game data, or inject code into games. Original gamma tables are kept in memory to restore the screen on normal exit.
+The application accesses display gamma controls and registers a global preset-switching hotkey. It does not record general keyboard input, read game data, or inject code into games. For the optional active-program feature and process selector, it reads process names, visible window titles, executable paths for icon extraction, and the foreground window locally. Window titles and executable paths are not saved in settings or sent anywhere. Only the executable name you select and its preset are saved locally. It does not inspect game memory. Original gamma tables are kept in memory to restore the screen on normal exit.
 
 ## Deletion and control
 

@@ -152,7 +152,7 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Microsoft Store packaging
 
-[Microsoft Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6) · Product ID: `9NWT13R8QZG6`. Version 1.0.6 was submitted for Store certification on October 28, 2026, with automatic publication after approval. Version **1.0.10** is distributed through GitHub; Store updates follow a separate certification process and may arrive later.
+[Microsoft Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6) · Product ID: `9NWT13R8QZG6`. Version 1.0.6 is published in Store. Version **1.0.10**, including the updated English screenshots and active-program features, was submitted for Store certification on October 28, 2026. It is in preprocessing/certification and will publish automatically after approval. [GitHub 1.0.10](https://github.com/idlepoe/brightness_toggle/releases/tag/v1.0.10) is available now; Store availability of 1.0.10 is not yet confirmed.
 
 ```powershell
 ./scripts/package-msix.ps1
