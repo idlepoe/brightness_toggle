@@ -1,14 +1,14 @@
 # Brightness Toggle
 
-A lightweight Windows desktop utility for switching screen gamma presets with one key. Built with C# and WinForms. Current version: **1.0.2**.
+A lightweight Windows desktop utility for switching screen gamma presets with one key. Built with C# and WinForms. Current version: **1.0.3**.
 
 ## Download and run
 
-1. Download **BrightnessToggle-1.0.2-win-x64.zip** from the [latest release](https://github.com/idlepoe/brightness_toggle/releases/latest).
+1. Download **BrightnessToggle-1.0.3-win-x64.zip** from the [latest release](https://github.com/idlepoe/brightness_toggle/releases/latest).
 2. Extract the ZIP and run **BrightnessToggle.exe**.
 3. Select your display, then press **F9** to cycle between **default (0%)** and **+80%**.
 
-Windows 10/11 x64. No separate Java or .NET installation is required. The portable build opens no console window. Portable releases are unsigned, so Windows may display an unknown-publisher or SmartScreen warning. The current application interface is Korean.
+Windows 10/11 x64. No separate Java or .NET installation is required. The portable build opens no console window. Portable releases are unsigned, so Windows may display an unknown-publisher or SmartScreen warning. The default interface language is English. Use the US and South Korean flag buttons at the top of the window to switch between English and Korean. Your choice is saved.
 
 ## Presets and preview
 
@@ -21,6 +21,10 @@ Windows 10/11 x64. No separate Java or .NET installation is required. The portab
 - **삭제 (Delete)** removes the selected custom preset. The fixed default preset cannot be edited or deleted.
 
 The default preset uses **0% correction**, preserving the original screen. The first additional preset uses **+80% correction**. Settings from earlier versions are migrated: default returns to 0%, and an unmodified built-in +25% preset becomes +80%. Customized presets are preserved.
+
+## Interface language
+
+Use the flag buttons in the upper-right corner: the US flag selects **English**, and the South Korean flag selects **한국어**. Switching updates the window, menus, notifications, and subsequent dialogs immediately. Preset names you entered are preserved. English is the default for new and legacy settings without a saved language.
 
 ## Hotkey and display
 
@@ -93,6 +97,17 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Release history
 
+- **1.0.3:** Added flag buttons for English/Korean, English by default, saved language choice, and Store MSIX packaging.
 - **1.0.2:** Restored default to 0%, changed the first built-in additional preset to +80%, unified percentage displays, and migrated legacy defaults.
 - **1.0.1:** Added application titles to dialogs. Its temporary 80% default interpretation was corrected in 1.0.2.
 - **1.0.0:** Initial preset, hotkey, multi-display, preview, corner notification, and system-tray release.
+
+## Microsoft Store packaging
+
+The Store product is reserved as **Brightness Toggle** (Store ID `9NWT13R8QZG6`). A submission package alone does not mean the app is published: Microsoft certification is required.
+
+```powershell
+./scripts/package-msix.ps1
+```
+
+Requires .NET 10 SDK and Windows SDK MakeAppx. The unsigned Store submission package is written to `publish/`. It is intended for Partner Center, not direct end-user installation. Microsoft signs the approved Store package. Store assets and the package identity are in `packaging/`.
