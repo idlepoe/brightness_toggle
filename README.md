@@ -104,7 +104,7 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Microsoft Store packaging
 
-The Store product is reserved as **Brightness Toggle** (Store ID `9NWT13R8QZG6`). A submission package alone does not mean the app is published: Microsoft certification is required.
+**Version 1.0.3 was submitted to Microsoft Store certification on October 28, 2026.** The submission is in preprocessing/certification and is configured to publish automatically after approval. It is not yet confirmed publicly available. Store product: **Brightness Toggle**, ID `9NWT13R8QZG6`. [Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6) (available after approval and propagation).
 
 ```powershell
 ./scripts/package-msix.ps1
