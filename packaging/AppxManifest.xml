@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap rescap">
+ <Identity Name="8C13C29F.BrightnessToggle" Publisher="CN=E6E0CA64-5693-4B23-9A95-DF94678405F8" Version="1.0.2.0" ProcessorArchitecture="x64" />
+ <Properties><DisplayName>Brightness Toggle</DisplayName><PublisherDisplayName>이제영</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo><Description>Switch screen gamma presets with one key.</Description></Properties>
+ <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
+ <Resources><Resource Language="ko-KR" /></Resources>
+ <Applications><Application Id="App" Executable="BrightnessToggle.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="Brightness Toggle" Description="Switch screen gamma presets with one key." BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications>
+ <Capabilities><rescap:Capability Name="runFullTrust" /></Capabilities>
+</Package>
