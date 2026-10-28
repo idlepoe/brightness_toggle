@@ -1,10 +1,27 @@
 ﻿# Brightness Toggle
 
-A lightweight Windows desktop utility for switching screen gamma presets with one key. Built with C# and WinForms. Current version: **1.0.6**.
+A lightweight Windows desktop utility for switching SDR screen gamma presets with one key. Brighten dark game scenes, tune black preservation and contrast, or apply a preset automatically while a chosen program is active. Built with C# and WinForms. Current version: **1.0.10**.
+
+**[Download 1.0.10 for Windows x64](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.10/BrightnessToggle-1.0.10-win-x64.zip)** · [Release notes](https://github.com/idlepoe/brightness_toggle/releases/tag/v1.0.10) · [All releases](https://github.com/idlepoe/brightness_toggle/releases)
+
+## Screenshot
+
+![Brightness Toggle 1.0.10 — English interface](docs/screenshots/main-en.png)
+
+The interface groups the preset library, brightness controls, automatic program switching, and display/hotkey settings. The example targets ARC Raiders (`PioneerGame.exe`); brightness correction affects the entire selected monitor while the game is active.
+
+## Features
+
+- Cycle Basic (0%), +25%, +50%, and +75% presets with F9; add your own presets.
+- Adjust gamma correction, black preservation, and contrast with live preview.
+- Automatically apply a chosen preset when a selected program is active; restore Basic after Alt+Tab or exit.
+- Find processes by executable name or window title, including `ARC`, `Raiders`, and `PioneerGame.exe`. Process icons help identify applications.
+- English by default, with an instant English/Korean switch and saved language preference.
+- A corner notification, monitor selection, and system-tray controls.
 
 ## Download and run
 
-1. Download **BrightnessToggle-1.0.6-win-x64.zip** from the [latest release](https://github.com/idlepoe/brightness_toggle/releases/latest).
+1. Download [**BrightnessToggle-1.0.10-win-x64.zip**](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.10/BrightnessToggle-1.0.10-win-x64.zip).
 2. Extract the ZIP and run **BrightnessToggle.exe**.
 3. Select your display, then press **F9** to cycle through **Basic (0%)**, **Brightness level 1 (+25%)**, **Brightness level 2 (+50%)**, and **Brightness level 3 (+75%)**.
 
@@ -13,12 +30,12 @@ Windows 10/11 x64. No separate Java or .NET installation is required. The portab
 ## Presets and preview
 
 - Select a preset in the list to edit it. Selection alone does not apply it.
-- Click **추가 (Add)** to create a preset and edit its name.
+- Click **Add** to create a preset and edit its name.
 - Adjust the slider from **-50% to +100%** gamma correction.
-- With **조정 시 바로 미리보기 (Live preview)** checked, slider changes apply immediately. Otherwise changes are saved without changing the screen.
-- Click **선택한 프리셋 적용 (Apply selected preset)** to apply the selected preset.
-- **다음 프리셋 (Next preset)** and the global hotkey cycle through the list.
-- **삭제 (Delete)** removes the selected custom preset. The fixed default preset cannot be edited or deleted.
+- With **Live preview while adjusting** checked, slider changes apply immediately. Otherwise changes are saved without changing the screen.
+- Click **Apply selected preset** to apply the selected preset.
+- **Next preset** and the global hotkey cycle through the list.
+- **Delete** removes the selected custom preset. The fixed default preset cannot be edited or deleted.
 
 New installations include these starting points (gamma correction / black preservation / contrast):
 
@@ -37,9 +54,20 @@ Legacy built-in +25%/+80% presets are replaced with the default stages once. Cus
 
 Use the flag buttons in the upper-right corner: the US flag selects **English**, and the South Korean flag selects **한국어**. Switching updates the window, menus, notifications, and subsequent dialogs immediately. Preset names you entered are preserved. English is the default for new and legacy settings without a saved language.
 
+## Automatic switching by active program
+
+1. Start the game or program you want to target.
+2. Click **Select process**. Search by process name or any visible window title (multiple search words are supported), select the actual game executable, then click **Select**. Search ignores invisible formatting characters and spacing in window titles. **Refresh** updates the running-process list. Alternatively, click **Pick active window (5 sec)** and switch to your game within five seconds; the foreground process is selected automatically. Programs with a window appear first.
+3. Choose an **Automatic preset** and enable **Auto-switch by active app**. The feature is off by default.
+4. The chosen preset applies when the target process owns the foreground window. Alt+Tab to another program, minimizing the target, or exiting it restores **Basic**. Detection runs approximately every 250 ms and continues while this utility is hidden to the tray.
+
+One executable name is supported at a time; all instances with that name match, regardless of capitalization. The selection and preset are saved across restarts, even if the target is not running. Choose the game executable rather than its launcher. Some hosted applications share a process name and cannot be distinguished this way.
+
+Automatic mode controls the entire selected monitor, not only pixels inside the program window. While automatic mode is enabled, editing sliders saves values but only applies them when the target is active. Disable automatic mode to use live preview in the settings window; disabling restores Basic first. The Apply button selects the automatic preset in this mode. F9 changes and remembers the automatic preset while the target is active; outside it, the screen stays at Basic. Automatic changes only apply when needed. Failed changes show an error and retry at most every five seconds.
+
 ## Hotkey and display
 
-Choose a display under **대상 디스플레이 (Target display)**. Changing the target restores the previous display first. Choose an F1–F11 hotkey under **전환 단축키 (Cycle hotkey)**; the default is F9. Holding the key does not repeatedly cycle. If another program owns a hotkey, choose a different one.
+Choose a display under **Target display**. Changing the target restores the previous display first. Choose an F1–F11 hotkey under **Cycle hotkey**; the default is F9. Holding the key does not repeatedly cycle. If another program owns a hotkey, choose a different one.
 
 A notification in the lower-right corner of the target display shows the preset name and correction amount for approximately 2.2 seconds without taking input focus.
 
@@ -49,9 +77,9 @@ A notification in the lower-right corner of the target display shows the preset 
 
 - Look for the **yellow sun icon** near the Windows clock. It may be inside the hidden-icons menu.
 - Double-click the icon to cycle to the next preset.
-- Right-click → **설정 열기 (Open settings)** to reopen the window.
+- Right-click → **Open settings** to reopen the window.
 - Right-click → **Basic (0%)** to restore the original gamma.
-- Right-click → **종료 (원래 밝기 복원) (Exit and restore original brightness)** to fully exit.
+- Right-click → **Exit (restore original gamma)** to fully exit.
 
 Normal exit restores the original gamma tables. Forced termination may prevent restoration. Windows notification settings may suppress tray balloons.
 
@@ -110,6 +138,10 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Release history
 
+- **1.0.10:** Added executable icons to the target process field and process selection list, with a default icon when unavailable.
+- **1.0.9:** Grouped the interface into preset library, brightness controls, automatic program switching, and display/hotkey settings. Fixed clipped Korean labels with adaptive wrapping and scrolling on smaller windows. Process search covers executable names and all visible window titles, supports multiple search terms and ignores invisible Unicode characters. ARC Raiders is also recognized by its PioneerGame process name.
+- **1.0.8:** Fixed process search for window titles containing invisible Unicode characters (such as ARC Raiders / PioneerGame.exe). Added timed active-window process selection.
+- **1.0.7:** Added a searchable running-process selector and active-program automatic preset switching, with Basic restoration on Alt+Tab/exit and saved target/preset settings.
 - **1.0.6:** Removed the redundant Applied timestamp after switching presets. Current preset and error messages remain visible.
 - **1.0.5:** Added Brightness level 3 (+75%, black preservation 35%, contrast 15%). Existing settings receive this stage once without resetting customized presets.
 - **1.0.4:** Added Basic/level 1/level 2 presets and per-preset black preservation and contrast controls to reduce washed-out shadows. Preserves custom settings.
@@ -120,7 +152,7 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Microsoft Store packaging
 
-**Version 1.0.3 is available in Microsoft Store. Version 1.0.6 was submitted as an update on October 28, 2026 and is currently in preprocessing/certification.** The update will publish automatically after approval; 1.0.6 is not yet confirmed live in Store. Store product: **Brightness Toggle**, ID `9NWT13R8QZG6`. [Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6).
+[Microsoft Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6) · Product ID: `9NWT13R8QZG6`. Version 1.0.6 was submitted for Store certification on October 28, 2026, with automatic publication after approval. Version **1.0.10** is distributed through GitHub; Store updates follow a separate certification process and may arrive later.
 
 ```powershell
 ./scripts/package-msix.ps1
