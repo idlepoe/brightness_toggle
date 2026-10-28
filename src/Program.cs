@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
 namespace BrightnessToggle;
@@ -20,11 +20,17 @@ internal sealed class Preset
 {
     public string Name { get; set; } = L.T("새 프리셋");
     public int Amount { get; set; } = 25;
-    public override string ToString() => $"{Name}   ({Amount:+0;-0;0}%)";
+    public int BlackPreservation { get; set; }
+    public int Contrast { get; set; }
+    public string BuiltIn { get; set; } = "";
+    public string DisplayName => BuiltIn switch { "basic"=>L.T("기본"), "level1"=>L.T("밝기 1단계"), "level2"=>L.T("밝기 2단계"), "level3"=>L.T("밝기 3단계"), _=>Name };
+    public override string ToString() => $"{DisplayName}   ({Amount:+0;-0;0}%)";
 }
 internal sealed class Config
 {
-    public List<Preset> Presets { get; set; } = [new() {Name="default",Amount=0}, new() {Name="+80%",Amount=80}];
+    public List<Preset> Presets { get; set; } = Defaults();
+    public int PresetSchema { get; set; }
+    internal static List<Preset> Defaults() => [new(){Name="default",BuiltIn="basic",Amount=0},new(){Name="Brightness level 1",BuiltIn="level1",Amount=25,BlackPreservation=15,Contrast=5},new(){Name="Brightness level 2",BuiltIn="level2",Amount=50,BlackPreservation=25,Contrast=10},new(){Name="Brightness level 3",BuiltIn="level3",Amount=75,BlackPreservation=35,Contrast=15}];
     public int Hotkey { get; set; } = (int)Keys.F9;
     public string Monitor { get; set; } = "";
     public string Language { get; set; } = "en";
@@ -37,11 +43,26 @@ internal sealed class Config
     {
         Language=Language=="ko"?"ko":"en";
         Presets ??= []; Presets=Presets.Where(p=>p!=null).ToList();
-        if(Presets.Count==0 || Presets[0].Name!="default") Presets.Insert(0,new(){Name="default",Amount=0});
-        Presets[0].Amount=0;
-        if(Presets.Count>1 && Presets[1].Name=="+25%" && Presets[1].Amount==25)
-        { Presets[1].Name="+80%"; Presets[1].Amount=80; }
-        foreach(var p in Presets) { p.Name=string.IsNullOrWhiteSpace(p.Name)?L.T("프리셋"):p.Name.Trim(); p.Amount=Math.Clamp(p.Amount,-50,100); }
+        if(Presets.Count==0 || (Presets[0].Name!="default" && Presets[0].BuiltIn!="basic")) Presets.Insert(0,Defaults()[0]);
+        if(PresetSchema<1)
+        {
+            // Replace only the exact legacy built-in; preserve all custom presets and their order.
+            if(Presets.Count>1 && Presets[1].BuiltIn=="" && ((Presets[1].Name=="+80%" && Presets[1].Amount==80)||(Presets[1].Name=="+25%" && Presets[1].Amount==25))) Presets.RemoveAt(1);
+            var defaults=Defaults();
+            for(int i=1;i<defaults.Count;i++) if(!Presets.Any(p=>p.BuiltIn==defaults[i].BuiltIn)) Presets.Insert(i,defaults[i]);
+            PresetSchema=1;
+        }
+        if(PresetSchema<2)
+        {
+            if(!Presets.Any(p=>p.BuiltIn=="level3"))
+            {
+                int after=Presets.FindLastIndex(p=>p.BuiltIn is "level1" or "level2");
+                Presets.Insert(Math.Max(1,after+1),Defaults()[3]);
+            }
+            PresetSchema=2;
+        }
+        Presets[0].BuiltIn="basic";Presets[0].Amount=Presets[0].BlackPreservation=Presets[0].Contrast=0;
+        foreach(var p in Presets) { p.Name=string.IsNullOrWhiteSpace(p.Name)?L.T("프리셋"):p.Name.Trim(); p.Amount=Math.Clamp(p.Amount,-50,100);p.BlackPreservation=Math.Clamp(p.BlackPreservation,0,100);p.Contrast=Math.Clamp(p.Contrast,0,50); }
         if(!ValidHotkey(Hotkey)) Hotkey=(int)Keys.F9;
     }
     internal static bool ValidHotkey(int key) => key >= (int)Keys.F1 && key <= (int)Keys.F11;
@@ -52,25 +73,33 @@ internal sealed class Config
         File.Move(FileName+".tmp",FileName,true);
     }
 }
-internal interface IBrightness : IDisposable { void Apply(string device,int amount); void RestoreAll(); }
+internal interface IBrightness : IDisposable { void Apply(string device,Preset preset); void RestoreAll(); }
 internal sealed class GammaBrightness : IBrightness
 {
     private readonly Dictionary<string,ushort[]> original=new();
-    internal static ushort[] Curve(ushort[] baseline,int amount)
+    internal static ushort[] Curve(ushort[] baseline,int amount,int blackPreservation=0,int contrast=0)
     {
         if(baseline.Length!=768) throw new ArgumentException("Invalid ramp");
-        if(amount==0) return (ushort[])baseline.Clone();
+        if(amount==0 && blackPreservation==0 && contrast==0) return (ushort[])baseline.Clone();
         double factor=1+Math.Clamp(amount,-50,100)/100.0;
         var ramp=new ushort[768];
         for(int channel=0;channel<3;channel++) for(int i=0;i<256;i++)
         {
-            double x=Math.Pow(i/255.0,1/factor)*255;
+            double y=Math.Pow(i/255.0,1/factor);
+            // Monotone toe keeps near-black tones darker, then a normalized contrast curve
+            // separates shadows and highlights without clipping either endpoint.
+            double toe=Math.Clamp(blackPreservation,0,100)/300.0;
+            y=y==0?0:y*y/(y+toe*(1-y));
+            double power=1+Math.Clamp(contrast,0,50)/100.0;
+            double bright=Math.Pow(y,power),dark=Math.Pow(1-y,power);
+            double x=bright/(bright+dark)*255;
+            x=Math.Clamp(x,0,255);
             int lo=(int)x,hi=Math.Min(255,lo+1);
             ramp[channel*256+i]=(ushort)Math.Round(baseline[channel*256+lo]*(1-(x-lo))+baseline[channel*256+hi]*(x-lo));
         }
         return ramp;
     }
-    public void Apply(string device,int amount)
+    public void Apply(string device,Preset preset)
     {
         IntPtr dc=Native.CreateDC("DISPLAY",device,null,IntPtr.Zero);
         if(dc==IntPtr.Zero) throw new InvalidOperationException(L.T("디스플레이에 접근할 수 없습니다."));
@@ -84,7 +113,7 @@ internal sealed class GammaBrightness : IBrightness
             }
             var before=new ushort[768];
             if(!Native.GetDeviceGammaRamp(dc,before))throw new InvalidOperationException(L.T("현재 화면 상태를 읽을 수 없습니다."));
-            var target=Curve(baseline,amount);
+            var target=Curve(baseline,preset.Amount,preset.BlackPreservation,preset.Contrast);
             if(!Native.SetDeviceGammaRamp(dc,target))throw new InvalidOperationException(L.T("밝기 적용 실패: 디스플레이·HDR·그래픽 드라이버 설정을 확인하세요."));
             var actual=new ushort[768];
             if(!Native.GetDeviceGammaRamp(dc,actual)||!Matches(target,actual))
@@ -140,9 +169,13 @@ internal sealed class MainForm : Form
     private readonly Config config;
     private readonly IBrightness brightness;
     private readonly bool testing;
-    private readonly ListBox list=new(){Dock=DockStyle.Fill,IntegralHeight=false};
+    private readonly ListBox list=new(){Dock=DockStyle.Fill,IntegralHeight=false,HorizontalScrollbar=true};
     private readonly TextBox nameBox=new(){Dock=DockStyle.Fill,MaxLength=36};
     private readonly TrackBar slider=new(){Dock=DockStyle.Fill,Minimum=-50,Maximum=100,TickFrequency=25,AutoSize=false,Height=44};
+    private readonly TrackBar blacks=new(){Dock=DockStyle.Fill,Minimum=0,Maximum=100,TickFrequency=25,AutoSize=false,Height=36};
+    private readonly TrackBar contrast=new(){Dock=DockStyle.Fill,Minimum=0,Maximum=50,TickFrequency=10,AutoSize=false,Height=36};
+    private readonly Label blackLabel=new(){AutoSize=true};
+    private readonly Label contrastLabel=new(){AutoSize=true};
     private readonly Label amount=new(){AutoSize=true};
     private readonly Label current=new(){AutoSize=true,Text=L.T("현재: default · 보정 0%")};
     private readonly Label status=new(){AutoSize=true,ForeColor=Color.DimGray};
@@ -164,10 +197,10 @@ internal sealed class MainForm : Form
     internal MainForm(Config? supplied=null,IBrightness? backend=null,bool test=false)
     {
         testing=test;config=supplied??Config.Load();config.Normalize();L.Language=config.Language;brightness=backend??new GammaBrightness();
-        Text=L.T("Brightness Toggle 1.0.3 · 밝기 프리셋");Font=new Font("맑은 고딕",10);ClientSize=new Size(860,660);
-        MinimumSize=new Size(860,700);StartPosition=FormStartPosition.CenterScreen;
+        Text=L.T("Brightness Toggle 1.0.6 · 밝기 프리셋");Font=new Font("맑은 고딕",10);ClientSize=new Size(960,820);
+        MinimumSize=new Size(960,820);StartPosition=FormStartPosition.CenterScreen;
         var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(22),ColumnCount=2,RowCount=6};
-        root.ColumnStyles.Add(new(SizeType.Absolute,235));root.ColumnStyles.Add(new(SizeType.Percent,100));
+        root.ColumnStyles.Add(new(SizeType.Absolute,310));root.ColumnStyles.Add(new(SizeType.Percent,100));
         root.RowStyles.Add(new(SizeType.Absolute,64));root.RowStyles.Add(new(SizeType.Percent,100));root.RowStyles.Add(new(SizeType.Absolute,56));root.RowStyles.Add(new(SizeType.Absolute,35));root.RowStyles.Add(new(SizeType.Absolute,48));root.RowStyles.Add(new(SizeType.Absolute,36));
         var intro=new Label{Text=L.T("한 번 눌러 밝기 전환"),Font=new Font(Font.FontFamily,17,FontStyle.Bold),AutoSize=true};var header=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2};
         header.ColumnStyles.Add(new(SizeType.Percent,100));header.ColumnStyles.Add(new(SizeType.AutoSize));
@@ -180,25 +213,25 @@ internal sealed class MainForm : Form
         left.RowStyles.Add(new(SizeType.Percent,100));left.RowStyles.Add(new(SizeType.Absolute,42));left.Controls.Add(list,0,0);
         var buttons=new FlowLayoutPanel{Dock=DockStyle.Fill};
         AddButton(buttons,L.T("추가"),(_,_)=>AddPreset());AddButton(buttons,L.T("삭제"),(_,_)=>RemovePreset());left.Controls.Add(buttons,0,1);root.Controls.Add(left,0,1);
-        var edit=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=10};
+        var edit=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=14,AutoScroll=true};
         edit.Controls.Add(new Label{Text=L.T("프리셋 이름"),AutoSize=true});edit.Controls.Add(nameBox);
-        edit.Controls.Add(amount);edit.Controls.Add(slider);edit.Controls.Add(preview);
+        edit.Controls.Add(amount);edit.Controls.Add(slider);edit.Controls.Add(blackLabel);edit.Controls.Add(blacks);edit.Controls.Add(contrastLabel);edit.Controls.Add(contrast);edit.Controls.Add(preview);
         var apply=new Button{Text=L.T("선택한 프리셋 적용"),Dock=DockStyle.Fill,Height=34};apply.Click+=(_,_)=>ApplySelected();edit.Controls.Add(apply);
         edit.Controls.Add(new Label{Text=L.T("대상 디스플레이"),AutoSize=true});edit.Controls.Add(monitorBox);
         edit.Controls.Add(new Label{Text=L.T("전환 단축키 (한 번 누르면 다음 프리셋)"),AutoSize=true});edit.Controls.Add(hotkeys);
         root.Controls.Add(edit,1,1);
-        var actions=new FlowLayoutPanel{Dock=DockStyle.Fill};AddButton(actions,L.T("다음 프리셋"),(_,_)=>Next());AddButton(actions,"default (0%)",(_,_)=>Apply(0));root.Controls.Add(actions,0,2);root.SetColumnSpan(actions,2);
+        var actions=new FlowLayoutPanel{Dock=DockStyle.Fill};AddButton(actions,L.T("다음 프리셋"),(_,_)=>Next());AddButton(actions,L.T("기본 (0%)"),(_,_)=>Apply(0));root.Controls.Add(actions,0,2);root.SetColumnSpan(actions,2);
         root.Controls.Add(current,0,3);root.SetColumnSpan(current,2);root.Controls.Add(status,0,4);root.SetColumnSpan(status,2);root.Controls.Add(trayHint,0,5);root.SetColumnSpan(trayHint,2);Controls.Add(root);
         foreach(var screen in Screen.AllScreens) monitorBox.Items.Add(screen.DeviceName);
         if(monitorBox.Items.Count==0) throw new InvalidOperationException(L.T("디스플레이를 찾을 수 없습니다."));
         monitorBox.SelectedItem=config.Monitor;if(monitorBox.SelectedIndex<0)monitorBox.SelectedItem=(Screen.PrimaryScreen??Screen.AllScreens[0]).DeviceName;
         for(int i=1;i<=11;i++)hotkeys.Items.Add((Keys)((int)Keys.F1+i-1));hotkeys.SelectedItem=(Keys)config.Hotkey;
-        var menu=new ContextMenuStrip();menu.Items.Add(L.T("다음 프리셋"),null,(_,_)=>Next());menu.Items.Add("default (0%)",null,(_,_)=>Apply(0));menu.Items.Add(L.T("설정 열기"),null,(_,_)=>{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add(new ToolStripSeparator());menu.Items.Add(L.T("종료 (원래 밝기 복원)"),null,(_,_)=>Exit());
+        var menu=new ContextMenuStrip();menu.Items.Add(L.T("다음 프리셋"),null,(_,_)=>Next());menu.Items.Add(L.T("기본 (0%)"),null,(_,_)=>Apply(0));menu.Items.Add(L.T("설정 열기"),null,(_,_)=>{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add(new ToolStripSeparator());menu.Items.Add(L.T("종료 (원래 밝기 복원)"),null,(_,_)=>Exit());
         using(var stream=typeof(MainForm).Assembly.GetManifestResourceStream("BrightnessToggle.Assets.brightness.ico") ?? throw new InvalidOperationException(L.T("밝기 아이콘을 읽을 수 없습니다.")))
         using(var sourceIcon=new Icon(stream)) brightnessIcon=(Icon)sourceIcon.Clone();
         Icon=brightnessIcon;
         tray=new NotifyIcon{Icon=brightnessIcon,Text=L.T("밝기: default (0%)"),ContextMenuStrip=menu,Visible=!testing};tray.DoubleClick+=(_,_)=>Next();
-        list.SelectedIndexChanged+=(_,_)=>LoadSelection();nameBox.TextChanged+=(_,_)=>EditName();slider.ValueChanged+=(_,_)=>EditAmount();
+        list.SelectedIndexChanged+=(_,_)=>LoadSelection();nameBox.TextChanged+=(_,_)=>EditName();slider.ValueChanged+=(_,_)=>EditAmount();blacks.ValueChanged+=(_,_)=>EditAmount();contrast.ValueChanged+=(_,_)=>EditAmount();
         preview.CheckedChanged+=(_,_)=>{if(preview.Checked)ApplySelected();};
         monitorBox.SelectedIndexChanged+=(_,_)=>ChangeMonitor();hotkeys.SelectedIndexChanged+=(_,_)=>RegisterKey();
         FormClosing+=HandleClosing;SystemEvents.SessionEnding+=SessionEnding;
@@ -218,6 +251,7 @@ internal sealed class MainForm : Form
     }
     private void ApplyLanguage()
     {
+        if(active>=0)appliedName=config.Presets[active].DisplayName;
         L.Apply(this);L.ApplyMenu(tray.ContextMenuStrip!.Items);
         int selected=list.SelectedIndex;RefreshList(selected<0?0:selected);UpdateCurrent();
         status.Text=L.Language=="ko"?"언어: 한국어":"Language: English";
@@ -229,18 +263,18 @@ internal sealed class MainForm : Form
     private void RefreshList(int selected) {loading=true;list.Items.Clear();foreach(var p in config.Presets)list.Items.Add(p);list.SelectedIndex=Math.Clamp(selected,0,list.Items.Count-1);loading=false;LoadSelection();}
     private void LoadSelection()
     {
-        if(loading||list.SelectedIndex<0)return;loading=true;var p=config.Presets[list.SelectedIndex];nameBox.Text=p.Name;slider.Value=p.Amount;amount.Text=L.F("밝기 보정: {0:+0;-0;0}%",p.Amount);nameBox.Enabled=slider.Enabled=list.SelectedIndex!=0;loading=false;
+        if(loading||list.SelectedIndex<0)return;loading=true;var p=config.Presets[list.SelectedIndex];nameBox.Text=p.DisplayName;slider.Value=p.Amount;blacks.Value=p.BlackPreservation;contrast.Value=p.Contrast;blackLabel.Text=L.F("검정 유지: {0}%",p.BlackPreservation);contrastLabel.Text=L.F("대비: {0}%",p.Contrast);amount.Text=L.F("밝기 보정: {0:+0;-0;0}%",p.Amount);nameBox.Enabled=slider.Enabled=blacks.Enabled=contrast.Enabled=list.SelectedIndex!=0;loading=false;
     }
-    private void EditName() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Name=string.IsNullOrWhiteSpace(nameBox.Text)?L.T("프리셋"):nameBox.Text.Trim();RefreshItem(i);Save();}
+    private void EditName() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].BuiltIn="";config.Presets[i].Name=string.IsNullOrWhiteSpace(nameBox.Text)?L.T("프리셋"):nameBox.Text.Trim();RefreshItem(i);Save();}
     private void RefreshItem(int i) {loading=true;list.Items[i]=config.Presets[i];loading=false;}
-    private void EditAmount() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Amount=slider.Value;amount.Text=L.F("밝기 보정: {0:+0;-0;0}%",slider.Value);RefreshItem(i);Save();if(preview.Checked)Apply(i);}
-    internal void AddPreset() {config.Presets.Add(new(){Name=L.T("프리셋 ")+config.Presets.Count,Amount=25});RefreshList(config.Presets.Count-1);Save();}
+    private void EditAmount() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Amount=slider.Value;config.Presets[i].BlackPreservation=blacks.Value;config.Presets[i].Contrast=contrast.Value;blackLabel.Text=L.F("검정 유지: {0}%",blacks.Value);contrastLabel.Text=L.F("대비: {0}%",contrast.Value);amount.Text=L.F("밝기 보정: {0:+0;-0;0}%",slider.Value);RefreshItem(i);Save();if(preview.Checked)Apply(i);}
+    internal void AddPreset() {config.Presets.Add(new(){Name=L.T("프리셋")+" "+config.Presets.Count,Amount=25});RefreshList(config.Presets.Count-1);Save();}
     internal void RemovePreset() {int i=list.SelectedIndex;if(i<=0)return;if(active==i&&!Apply(0))return;config.Presets.RemoveAt(i);if(active>i)active--;RefreshList(Math.Min(i,config.Presets.Count-1));Save();}
     internal void Next()=>Apply((active+1)%config.Presets.Count);
     private void ApplySelected(){if(list.SelectedIndex>=0)Apply(list.SelectedIndex);}
     internal bool Apply(int index)
     {
-        try {var p=config.Presets[index];brightness.Apply((string)monitorBox.SelectedItem!,p.Amount);active=index;appliedName=p.Name;appliedAmount=p.Amount;UpdateCurrent();status.Text=L.T("적용 요청 완료 · ")+DateTime.Now.ToString("HH:mm:ss");if(!testing)osd.Notify(TargetScreen(),p.Name,p.Amount);return true;}
+        try {var p=config.Presets[index];brightness.Apply((string)monitorBox.SelectedItem!,p);active=index;appliedName=p.DisplayName;appliedAmount=p.Amount;UpdateCurrent();status.Text="";if(!testing)osd.Notify(TargetScreen(),p.DisplayName,p.Amount);return true;}
         catch(Exception ex){status.Text=ex.Message;if(!testing)tray.ShowBalloonTip(3000,L.T("밝기 적용 실패"),ex.Message,ToolTipIcon.Warning);return false;}
     }
     private Screen TargetScreen()=>Screen.AllScreens.FirstOrDefault(s=>s.DeviceName==(string)monitorBox.SelectedItem!)??Screen.PrimaryScreen??Screen.AllScreens[0];
@@ -300,7 +334,7 @@ internal static class Native
 }
 internal static class Tests
 {
-    private sealed class Fake : IBrightness {internal int Amount;internal int Restores;internal bool Fail;public void Apply(string d,int a){if(Fail)throw new Exception("expected failure");Amount=a;}public void RestoreAll(){Restores++;}public void Dispose(){}}
+    private sealed class Fake : IBrightness {internal int Amount;internal int Restores;internal bool Fail;public void Apply(string d,Preset p){if(Fail)throw new Exception("expected failure");Amount=p.Amount;}public void RestoreAll(){Restores++;}public void Dispose(){}}
     internal static void Run(string path)
     {
         try
@@ -309,17 +343,24 @@ internal static class Tests
             if(!GammaBrightness.Curve(baseline,0).SequenceEqual(baseline))throw new Exception("default ramp");
             foreach(int a in new[]{-50,25,100}){var ramp=GammaBrightness.Curve(baseline,a);for(int c=0;c<3;c++)for(int i=1;i<256;i++)if(ramp[c*256+i]<ramp[c*256+i-1])throw new Exception("nonmonotonic ramp");}
             if(GammaBrightness.Curve(baseline,25)[128]<=baseline[128])throw new Exception("brightness direction");
+            foreach(int a in new[]{-50,0,25,50,100}) foreach(int black in new[]{0,15,25,100}) foreach(int contrast in new[]{0,10,50})
+            {var ramp=GammaBrightness.Curve(baseline,a,black,contrast);if(ramp[0]!=0||ramp[255]!=65535)throw new Exception("endpoints");for(int i=1;i<256;i++)if(ramp[i]<ramp[i-1])throw new Exception("tone monotonicity");}
+            if(GammaBrightness.Curve(baseline,50,25,10)[16]>=GammaBrightness.Curve(baseline,50)[16])throw new Exception("black preservation");
+            var previous=new Config{PresetSchema=1,Presets=Config.Defaults().Take(3).ToList()};previous.Presets[1].Amount=32;previous.Presets.Add(new(){Name="custom",Amount=42});previous.Normalize();previous.Normalize();
+            if(previous.Presets.Count!=5||previous.Presets[1].Amount!=32||previous.Presets[3].Amount!=75||previous.Presets[4].Name!="custom")throw new Exception("level 3 migration");
+            previous.Presets.RemoveAt(3);previous.Normalize();if(previous.Presets.Any(p=>p.BuiltIn=="level3"))throw new Exception("deleted level retained");
             var config=new Config();var fake=new Fake();
             var migrated=new Config{Presets=[new(){Name="default",Amount=0},new(){Name="custom",Amount=45}]};migrated.Normalize();
-            if(migrated.Presets[0].Amount!=0||migrated.Presets[1].Amount!=45)throw new Exception("default migration");
+            if(migrated.Presets[0].Amount!=0||migrated.Presets[4].Amount!=45)throw new Exception("default migration");
             var legacy=new Config{Presets=[new(){Name="default",Amount=-20},new(){Name="+25%",Amount=25},new(){Name="custom",Amount=45}]};
             legacy.Normalize();legacy.Normalize();
-            if(legacy.Presets[0].Amount!=0||legacy.Presets[1].Amount!=80||legacy.Presets[1].Name!="+80%"||legacy.Presets[2].Amount!=45)throw new Exception("legacy migration");
+            if(legacy.Presets[0].Amount!=0||legacy.Presets[1].Amount!=25||legacy.Presets[2].Amount!=50||legacy.Presets[4].Amount!=45)throw new Exception("legacy migration");
             if(GammaBrightness.Curve(baseline,80)[128]<=baseline[128])throw new Exception("plus 80 curve");
             using(var form=new MainForm(config,fake,true)){form.Show();Application.DoEvents();if(form.Active!=0||fake.Amount!=0)throw new Exception("startup default zero");
             if(L.Language!="en"||!form.Text.Contains("Gamma presets"))throw new Exception("default English");
             form.SetLanguage("ko");if(!form.Text.Contains("밝기 프리셋")||config.Language!="ko")throw new Exception("Korean switch");
-            var roundtrip=JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(config));if(roundtrip?.Language!="ko")throw new Exception("language save");
+            var roundtrip=JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(config));if(roundtrip?.Language!="ko"||roundtrip.Presets[2].BlackPreservation!=25||roundtrip.Presets[2].Contrast!=10)throw new Exception("language save");
+            if(config.Presets[1].DisplayName!="밝기 1단계")throw new Exception("preset translation");
             form.SetLanguage("en");if(!form.Text.Contains("Gamma presets"))throw new Exception("English switch");
             using(var osd=new Osd())
             {
@@ -327,9 +368,9 @@ internal static class Tests
                 if(!osd.Visible||!osd.TopMost||osd.ShowInTaskbar)throw new Exception("OSD display");
                 using var shot=new Bitmap(osd.Width,osd.Height);osd.DrawToBitmap(shot,new Rectangle(Point.Empty,osd.Size));shot.Save(Path.Combine(Path.GetDirectoryName(path)!,"brightness-osd.png"));osd.Hide();
             }
-            form.Size=new Size(1366,768);Application.DoEvents();using(var image=new Bitmap(form.Width,form.Height)){form.DrawToBitmap(image,new Rectangle(Point.Empty,form.Size));image.Save(Path.ChangeExtension(path,".png"));}
-            form.Next();if(form.Active!=1||fake.Amount!=80)throw new Exception("cycle plus");form.Next();if(form.Active!=0||fake.Amount!=0)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=3)throw new Exception("add");form.Apply(2);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=2)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
-            File.WriteAllText(path,"PASS: English default, Korean/English switch, language persistence; default 0%, first preset +80%, old config migration, startup default, default/+80 cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
+            form.Size=new Size(1366,900);Application.DoEvents();using(var image=new Bitmap(form.Width,form.Height)){form.DrawToBitmap(image,new Rectangle(Point.Empty,form.Size));image.Save(Path.ChangeExtension(path,".png"));}
+            form.Next();if(form.Active!=1||fake.Amount!=25)throw new Exception("cycle level 1");form.Next();if(form.Active!=2||fake.Amount!=50)throw new Exception("cycle level 2");form.Next();if(form.Active!=3||fake.Amount!=75)throw new Exception("cycle level 3");form.Next();if(form.Active!=0||fake.Amount!=0)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=5)throw new Exception("add");form.Apply(4);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=4)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
+            File.WriteAllText(path,"PASS: Four-stage presets, tone controls, monotone curves and endpoints, black preservation, migration and persistence; English default, Korean/English switch, language persistence; default 0%, levels +25%/+50%/+75%, old config migration, startup default, four-stage cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
         }catch(Exception ex){File.WriteAllText(path,"FAIL: "+ex);Environment.ExitCode=1;}
     }
 }

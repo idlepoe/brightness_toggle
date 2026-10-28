@@ -1,12 +1,12 @@
-# Brightness Toggle
+﻿# Brightness Toggle
 
-A lightweight Windows desktop utility for switching screen gamma presets with one key. Built with C# and WinForms. Current version: **1.0.3**.
+A lightweight Windows desktop utility for switching screen gamma presets with one key. Built with C# and WinForms. Current version: **1.0.6**.
 
 ## Download and run
 
-1. Download **BrightnessToggle-1.0.3-win-x64.zip** from the [latest release](https://github.com/idlepoe/brightness_toggle/releases/latest).
+1. Download **BrightnessToggle-1.0.6-win-x64.zip** from the [latest release](https://github.com/idlepoe/brightness_toggle/releases/latest).
 2. Extract the ZIP and run **BrightnessToggle.exe**.
-3. Select your display, then press **F9** to cycle between **default (0%)** and **+80%**.
+3. Select your display, then press **F9** to cycle through **Basic (0%)**, **Brightness level 1 (+25%)**, **Brightness level 2 (+50%)**, and **Brightness level 3 (+75%)**.
 
 Windows 10/11 x64. No separate Java or .NET installation is required. The portable build opens no console window. Portable releases are unsigned, so Windows may display an unknown-publisher or SmartScreen warning. The default interface language is English. Use the US and South Korean flag buttons at the top of the window to switch between English and Korean. Your choice is saved.
 
@@ -20,7 +20,18 @@ Windows 10/11 x64. No separate Java or .NET installation is required. The portab
 - **다음 프리셋 (Next preset)** and the global hotkey cycle through the list.
 - **삭제 (Delete)** removes the selected custom preset. The fixed default preset cannot be edited or deleted.
 
-The default preset uses **0% correction**, preserving the original screen. The first additional preset uses **+80% correction**. Settings from earlier versions are migrated: default returns to 0%, and an unmodified built-in +25% preset becomes +80%. Customized presets are preserved.
+New installations include these starting points (gamma correction / black preservation / contrast):
+
+| Preset | Gamma | Black preservation | Contrast |
+|---|---:|---:|---:|
+| Basic | 0% | 0% | 0% |
+| Brightness level 1 | +25% | 15% | 5% |
+| Brightness level 2 | +50% | 25% | 10% |
+| Brightness level 3 | +75% | 35% | 15% |
+
+Adjust **Gamma correction**, **Black preservation** (0–100%), and **Contrast** (0–50%) independently for each editable preset. Live preview applies all three together. Black preservation reduces the lifted, gray appearance of shadows; contrast separates dark and bright tones. Higher values can hide shadow details, so adjust while viewing the game. These are tone-curve strengths, not physical brightness measurements. Basic always restores the original gamma.
+
+Legacy built-in +25%/+80% presets are replaced with the default stages once. Custom presets retain their names, correction amounts, and order after the new stages, with both new controls initially at zero. Edits and deletions are retained on subsequent starts. Built-in stage names follow the selected language until renamed.
 
 ## Interface language
 
@@ -39,7 +50,7 @@ A notification in the lower-right corner of the target display shows the preset 
 - Look for the **yellow sun icon** near the Windows clock. It may be inside the hidden-icons menu.
 - Double-click the icon to cycle to the next preset.
 - Right-click → **설정 열기 (Open settings)** to reopen the window.
-- Right-click → **default (0%)** to restore the original gamma.
+- Right-click → **Basic (0%)** to restore the original gamma.
 - Right-click → **종료 (원래 밝기 복원) (Exit and restore original brightness)** to fully exit.
 
 Normal exit restores the original gamma tables. Forced termination may prevent restoration. Windows notification settings may suppress tray balloons.
@@ -47,6 +58,8 @@ Normal exit restores the original gamma tables. Forced termination may prevent r
 ## How brightness correction works
 
 This app adjusts **SDR gamma**, not the monitor backlight or physical luminance. **+80% means a gamma correction factor of 1.8**, not an 80% increase in measured display brightness. All displayed percentages refer to correction relative to the captured original gamma table.
+
+With both tone controls at zero, the original gamma formula is retained. Black preservation adds a monotone shadow toe; contrast uses a normalized power curve. Both preserve black/white endpoints without reversing tone order.
 
 The app captures the original RGB gamma tables per display and calculates each preset from that baseline, so repeated switching does not accumulate corrections. Default and normal exit restore that baseline.
 
@@ -93,10 +106,13 @@ Install the .NET 10 SDK, then run from the repository root:
 - Portable output: `publish/BrightnessToggle.exe` (self-contained Windows x64)
 - Test output: `TestResults/`
 
-Tests use a fake display backend and do not change the real display. They cover default/+80% cycling, legacy settings migration, gamma calculations, add/remove behavior, failure state, tray hiding, restoration calls, and the corner notification. Actual gamma application and game compatibility require testing on the target system.
+Tests use a fake display backend and do not change the real display. They cover four-stage cycling, black preservation/contrast, monotonic curves and endpoints, legacy settings migration, gamma calculations, add/remove behavior, failure state, tray hiding, restoration calls, and the corner notification. Actual gamma application and game compatibility require testing on the target system.
 
 ## Release history
 
+- **1.0.6:** Removed the redundant Applied timestamp after switching presets. Current preset and error messages remain visible.
+- **1.0.5:** Added Brightness level 3 (+75%, black preservation 35%, contrast 15%). Existing settings receive this stage once without resetting customized presets.
+- **1.0.4:** Added Basic/level 1/level 2 presets and per-preset black preservation and contrast controls to reduce washed-out shadows. Preserves custom settings.
 - **1.0.3:** Added flag buttons for English/Korean, English by default, saved language choice, and Store MSIX packaging.
 - **1.0.2:** Restored default to 0%, changed the first built-in additional preset to +80%, unified percentage displays, and migrated legacy defaults.
 - **1.0.1:** Added application titles to dialogs. Its temporary 80% default interpretation was corrected in 1.0.2.

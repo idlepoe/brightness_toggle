@@ -1,4 +1,4 @@
-param([string]$Dotnet = "dotnet", [string]$MakeAppx = "")
+﻿param([string]$Dotnet = "dotnet", [string]$MakeAppx = "")
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $MakeAppx) {
@@ -12,7 +12,7 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item (Join-Path $projectRoot "publish/BrightnessToggle.exe") $stage -Force
 Copy-Item (Join-Path $projectRoot "packaging/AppxManifest.xml") $stage -Force
 Copy-Item (Join-Path $projectRoot "packaging/Assets") $stage -Recurse -Force
-$destination = Join-Path $projectRoot "publish/BrightnessToggle-1.0.3-x64-Store.msix"
+$destination = Join-Path $projectRoot "publish/BrightnessToggle-1.0.6-x64-Store.msix"
 & $MakeAppx pack /d $stage /p $destination /o
 if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed" }
 Write-Output "Unsigned Store submission package: $destination"

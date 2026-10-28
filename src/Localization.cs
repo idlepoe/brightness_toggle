@@ -1,4 +1,4 @@
-namespace BrightnessToggle;
+﻿namespace BrightnessToggle;
 
 internal static class L
 {
@@ -7,6 +7,7 @@ internal static class L
     {
         ["이미 실행 중입니다. 트레이의 밝기 전환 아이콘을 확인하세요."]="Brightness Toggle is already running. Look for the sun icon in the system tray.",
         ["실행 실패: "]="Unable to start: ",
+        ["기본"]="Basic", ["밝기 1단계"]="Brightness level 1", ["밝기 2단계"]="Brightness level 2", ["밝기 3단계"]="Brightness level 3", ["기본 (0%)"]="Basic (0%)", ["검정 유지: {0}%"]="Black preservation: {0}%", ["대비: {0}%"]="Contrast: {0}%",
         ["새 프리셋"]="New preset", ["프리셋"]="Preset",
         ["디스플레이에 접근할 수 없습니다."]="Cannot access this display.",
         ["이 디스플레이의 감마 보정을 읽을 수 없습니다."]="Cannot read gamma correction for this display.",
@@ -20,7 +21,7 @@ internal static class L
         ["조정 시 바로 미리보기"]="Live preview while adjusting",
         ["X를 누르면 시스템 트레이로 숨겨집니다. 완전 종료: 트레이 우클릭 → 종료"]="X hides this window to the tray. To quit: right-click the sun icon → Exit.",
         ["원래 화면"]="Original",
-        ["Brightness Toggle 1.0.3 · 밝기 프리셋"]="Brightness Toggle 1.0.3 · Gamma presets",
+        ["Brightness Toggle 1.0.6 · 밝기 프리셋"]="Brightness Toggle 1.0.6 · Gamma presets",
         ["한 번 눌러 밝기 전환"]="One-key brightness toggle",
         ["추가"]="Add", ["삭제"]="Delete", ["프리셋 이름"]="Preset name",
         ["선택한 프리셋 적용"]="Apply selected preset", ["대상 디스플레이"]="Target display",
@@ -30,7 +31,7 @@ internal static class L
         ["디스플레이를 찾을 수 없습니다."]="No display was found.",
         ["밝기 아이콘을 읽을 수 없습니다."]="Cannot load the brightness icon.",
         ["밝기: default (0%)"]="Gamma: default (0%)",
-        ["적용 요청 완료 · "]="Applied · ", ["밝기 적용 실패"]="Gamma adjustment failed",
+        ["밝기 적용 실패"]="Gamma adjustment failed",
         ["설정 저장 실패: "]="Could not save settings: ",
         [": 다음 프리셋"]=": Next preset",
         ["단축키 사용 중입니다. 다른 F키를 선택하세요."]="That hotkey is in use. Choose another F key.",
