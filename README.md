@@ -120,7 +120,7 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Microsoft Store packaging
 
-**Version 1.0.3 was submitted to Microsoft Store certification on October 28, 2026.** The submission is in preprocessing/certification and is configured to publish automatically after approval. It is not yet confirmed publicly available. Store product: **Brightness Toggle**, ID `9NWT13R8QZG6`. [Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6) (available after approval and propagation).
+**Version 1.0.3 is available in Microsoft Store. Version 1.0.6 was submitted as an update on October 28, 2026 and is currently in preprocessing/certification.** The update will publish automatically after approval; 1.0.6 is not yet confirmed live in Store. Store product: **Brightness Toggle**, ID `9NWT13R8QZG6`. [Store page](https://apps.microsoft.com/detail/9NWT13R8QZG6).
 
 ```powershell
 ./scripts/package-msix.ps1
