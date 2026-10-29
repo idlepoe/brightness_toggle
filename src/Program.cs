@@ -11,8 +11,8 @@ internal static class Program
         L.Language=Config.Load().Language;
         if(args.Length == 2 && args[0] == "--self-test") { Tests.Run(args[1]); return; }
         using var mutex = new Mutex(true, @"Local\BrightnessToggle.WinForms", out bool first);
-        if(!first) { MessageBox.Show(L.T("이미 실행 중입니다. 트레이의 밝기 전환 아이콘을 확인하세요."), "Brightness Toggle", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
-        try { Application.Run(new MainForm()); }
+        if(!first) { if(StartupSettings.IsStartup(args))return;MessageBox.Show(L.T("이미 실행 중입니다. 트레이의 밝기 전환 아이콘을 확인하세요."), "Brightness Toggle", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        try { Application.Run(new MainForm(startInTray:StartupSettings.IsStartup(args))); }
         catch(Exception ex) { MessageBox.Show(L.T("실행 실패: ") + ex.Message, "Brightness Toggle", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
 }
@@ -178,6 +178,10 @@ internal sealed class MainForm : Form
     private readonly Config config;
     private readonly IBrightness brightness;
     private readonly bool testing;
+    private readonly IStartupSettings startupSettings;
+    private readonly bool startInTray;
+    private bool startupLoaded,changingStartup,runtimeInitialized;
+    private readonly CheckBox runAtStartup=new(){Text=L.T("Windows 시작 시 자동 실행"),AutoSize=true};
     private readonly ListBox list=new(){Dock=DockStyle.Fill,IntegralHeight=false,HorizontalScrollbar=true};
     private readonly TextBox nameBox=new(){Dock=DockStyle.Fill,MaxLength=36};
     private readonly TrackBar slider=new(){Dock=DockStyle.Fill,Minimum=-50,Maximum=100,TickFrequency=25,AutoSize=false,Height=44};
@@ -218,11 +222,11 @@ internal sealed class MainForm : Form
         int textHeight=TextRenderer.MeasureText(autoSwitch.Text,autoSwitch.Font,new Size(textWidth,int.MaxValue),TextFormatFlags.WordBreak|TextFormatFlags.TextBoxControl).Height;
         if(autoSwitch.Height<textHeight+8||autoSwitch.Right>autoSwitch.Parent!.ClientSize.Width)throw new Exception("Automation checkbox text clipped");
     }
-    internal MainForm(Config? supplied=null,IBrightness? backend=null,bool test=false)
+    internal MainForm(Config? supplied=null,IBrightness? backend=null,bool test=false,bool startInTray=false,IStartupSettings? startup=null)
     {
-        testing=test;config=supplied??Config.Load();config.Normalize();L.Language=config.Language;brightness=backend??new GammaBrightness();
-        Text=L.T("Brightness Toggle 1.0.10 · 밝기 프리셋");Font=new Font("맑은 고딕",10);ClientSize=new Size(1040,920);
-        MinimumSize=new Size(1040,920);StartPosition=FormStartPosition.CenterScreen;
+        testing=test;this.startInTray=startInTray;startupSettings=startup??new StartupSettings();config=supplied??Config.Load();config.Normalize();L.Language=config.Language;brightness=backend??new GammaBrightness();
+        Text=L.T("Brightness Toggle 1.0.12 · 밝기 프리셋");Font=new Font("맑은 고딕",10);ClientSize=new Size(1040,960);
+        MinimumSize=new Size(1040,960);StartPosition=FormStartPosition.CenterScreen;
         var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(22),ColumnCount=2,RowCount=6};
         root.ColumnStyles.Add(new(SizeType.Absolute,360));root.ColumnStyles.Add(new(SizeType.Percent,100));
         root.RowStyles.Add(new(SizeType.Absolute,64));root.RowStyles.Add(new(SizeType.Percent,100));root.RowStyles.Add(new(SizeType.Absolute,56));root.RowStyles.Add(new(SizeType.AutoSize));root.RowStyles.Add(new(SizeType.AutoSize));root.RowStyles.Add(new(SizeType.AutoSize));
@@ -285,7 +289,7 @@ internal sealed class MainForm : Form
         right.Controls.Add(Section("밝기 조절",edit),0,0);
         var devices=new TableLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,ColumnCount=1,RowCount=4};devices.ColumnStyles.Add(new(SizeType.Percent,100));
         devices.Controls.Add(new Label{Text=L.T("대상 디스플레이"),AutoSize=true});devices.Controls.Add(monitorBox);
-        devices.Controls.Add(new Label{Text=L.T("전환 단축키 (한 번 누르면 다음 프리셋)"),AutoSize=true});devices.Controls.Add(hotkeys);right.Controls.Add(Section("디스플레이 및 단축키",devices),0,1);
+        devices.Controls.Add(new Label{Text=L.T("전환 단축키 (한 번 누르면 다음 프리셋)"),AutoSize=true});devices.Controls.Add(hotkeys);devices.Controls.Add(runAtStartup);runAtStartup.Enabled=false;runAtStartup.CheckedChanged+=async(_,_)=>await ChangeStartup();right.Controls.Add(Section("디스플레이 및 단축키",devices),0,1);
         content.Controls.Add(right,1,0);
         var actions=new FlowLayoutPanel{Dock=DockStyle.Fill};AddButton(actions,L.T("다음 프리셋"),(_,_)=>Next());AddButton(actions,L.T("기본 (0%)"),(_,_)=>Apply(0));root.Controls.Add(actions,0,2);root.SetColumnSpan(actions,2);
         root.Controls.Add(current,0,3);root.SetColumnSpan(current,2);root.Controls.Add(status,0,4);root.SetColumnSpan(status,2);root.Controls.Add(trayHint,0,5);root.SetColumnSpan(trayHint,2);Controls.Add(root);
@@ -295,18 +299,53 @@ internal sealed class MainForm : Form
         if(monitorBox.Items.Count==0) throw new InvalidOperationException(L.T("디스플레이를 찾을 수 없습니다."));
         monitorBox.SelectedItem=config.Monitor;if(monitorBox.SelectedIndex<0)monitorBox.SelectedItem=(Screen.PrimaryScreen??Screen.AllScreens[0]).DeviceName;
         for(int i=1;i<=11;i++)hotkeys.Items.Add((Keys)((int)Keys.F1+i-1));hotkeys.SelectedItem=(Keys)config.Hotkey;
-        var menu=new ContextMenuStrip();menu.Items.Add(L.T("다음 프리셋"),null,(_,_)=>Next());menu.Items.Add(L.T("기본 (0%)"),null,(_,_)=>Apply(0));menu.Items.Add(L.T("설정 열기"),null,(_,_)=>{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add(new ToolStripSeparator());menu.Items.Add(L.T("종료 (원래 밝기 복원)"),null,(_,_)=>Exit());
+        var menu=new ContextMenuStrip();menu.Items.Add(L.T("다음 프리셋"),null,(_,_)=>Next());menu.Items.Add(L.T("기본 (0%)"),null,(_,_)=>Apply(0));menu.Items.Add(L.T("설정 열기"),null,(_,_)=>OpenSettings());menu.Items.Add(new ToolStripSeparator());menu.Items.Add(L.T("종료 (원래 밝기 복원)"),null,(_,_)=>Exit());
         using(var stream=typeof(MainForm).Assembly.GetManifestResourceStream("BrightnessToggle.Assets.brightness.ico") ?? throw new InvalidOperationException(L.T("밝기 아이콘을 읽을 수 없습니다.")))
         using(var sourceIcon=new Icon(stream)) brightnessIcon=(Icon)sourceIcon.Clone();
         Icon=brightnessIcon;
-        tray=new NotifyIcon{Icon=brightnessIcon,Text=L.T("밝기: default (0%)"),ContextMenuStrip=menu,Visible=!testing};tray.DoubleClick+=(_,_)=>Next();
+        tray=new NotifyIcon{Icon=brightnessIcon,Text=L.T("밝기: default (0%)"),ContextMenuStrip=menu,Visible=!testing};tray.MouseClick+=(_,e)=>{if(e.Button==MouseButtons.Left)OpenSettings();};
         list.SelectedIndexChanged+=(_,_)=>LoadSelection();nameBox.TextChanged+=(_,_)=>EditName();slider.ValueChanged+=(_,_)=>EditAmount();blacks.ValueChanged+=(_,_)=>EditAmount();contrast.ValueChanged+=(_,_)=>EditAmount();
         preview.CheckedChanged+=(_,_)=>{if(preview.Checked)ApplySelected();};
         monitorBox.SelectedIndexChanged+=(_,_)=>ChangeMonitor();hotkeys.SelectedIndexChanged+=(_,_)=>RegisterKey();
         FormClosing+=HandleClosing;SystemEvents.SessionEnding+=SessionEnding;
         RefreshList(0);config.Monitor=(string)monitorBox.SelectedItem!;
         ApplyLanguage();
-        Shown+=(_,_)=>{RegisterKey();Apply(0);if(!testing){CheckForeground();foregroundTimer.Start();}};
+        Shown+=async(_,_)=>await InitializeRuntime();
+    }
+    protected override void SetVisibleCore(bool value)
+    {
+        if(value&&startInTray&&!startupLoaded)
+        {
+            // Initialize controls and the message loop without showing the settings window.
+            if(!IsHandleCreated)CreateHandle();
+            startupLoaded=true;
+            BeginInvoke(async()=>await InitializeRuntime());
+            base.SetVisibleCore(false);return;
+        }
+        base.SetVisibleCore(value);
+    }
+    private async Task InitializeRuntime()
+    {
+        if(runtimeInitialized)return;runtimeInitialized=true;RegisterKey();Apply(0);
+        if(!testing){CheckForeground();foregroundTimer.Start();}await LoadStartup();
+    }
+    internal async Task LoadStartup()
+    {
+        changingStartup=true;
+        try{runAtStartup.Checked=await startupSettings.IsEnabled();runAtStartup.Enabled=true;}
+        catch(Exception ex){status.Text=L.T("자동 실행 설정 실패: ")+ex.Message;}
+        finally{changingStartup=false;}
+    }
+    private async Task ChangeStartup()
+    {
+        if(changingStartup)return;bool requested=runAtStartup.Checked;runAtStartup.Enabled=false;
+        try
+        {
+            bool enabled=await startupSettings.SetEnabled(requested);changingStartup=true;runAtStartup.Checked=enabled;
+            if(enabled!=requested)status.Text=L.T("Windows 설정 → 앱 → 시작 프로그램에서 변경하세요.");
+        }
+        catch(Exception ex){changingStartup=true;runAtStartup.Checked=!requested;status.Text=L.T("자동 실행 설정 실패: ")+ex.Message;}
+        finally{changingStartup=false;runAtStartup.Enabled=true;}
     }
     private void UpdateProcessIcon()
     {
@@ -343,6 +382,7 @@ internal sealed class MainForm : Form
     private void EditAmount() {if(loading||list.SelectedIndex<=0)return;int i=list.SelectedIndex;config.Presets[i].Amount=slider.Value;config.Presets[i].BlackPreservation=blacks.Value;config.Presets[i].Contrast=contrast.Value;blackLabel.Text=L.F("검정 유지: {0}%",blacks.Value);contrastLabel.Text=L.F("대비: {0}%",contrast.Value);amount.Text=L.F("밝기 보정: {0:+0;-0;0}%",slider.Value);RefreshItem(i);Save();if(preview.Checked&&!config.AutoSwitchEnabled)Apply(i);retryAutoAt=DateTime.MinValue;CheckForeground();}
     internal void AddPreset() {config.Presets.Add(new(){Name=L.T("프리셋")+" "+config.Presets.Count,Amount=25});RefreshList(config.Presets.Count-1);Save();}
     internal void RemovePreset() {int i=list.SelectedIndex;if(i<=0)return;if(active==i&&!Apply(0))return;config.Presets.RemoveAt(i);if(active>i)active--;if(!config.Presets.Any(p=>p.Id==config.AutoPresetId)){config.AutoPresetId=config.Presets[0].Id;retryAutoAt=DateTime.MinValue;}RefreshList(Math.Min(i,config.Presets.Count-1));Save();}
+    internal void OpenSettings(){Show();WindowState=FormWindowState.Normal;Activate();}
     internal void Next()
     {
         if(config.AutoSwitchEnabled)
@@ -443,12 +483,19 @@ internal static class Native
 }
 internal static class Tests
 {
+    private sealed class FakeStartup : IStartupSettings
+    {
+        internal bool Enabled;public Task<bool> IsEnabled()=>Task.FromResult(Enabled);
+        public Task<bool> SetEnabled(bool enabled){Enabled=enabled;return Task.FromResult(enabled);}
+    }
     private sealed class Fake : IBrightness {internal int Amount;internal int Calls;internal int Attempts;internal int Restores;internal bool Fail;public void Apply(string d,Preset p){Attempts++;if(Fail)throw new Exception("expected failure");Amount=p.Amount;Calls++;}public void RestoreAll(){Restores++;}public void Dispose(){}}
     internal static void Run(string path)
     {
         try
         {
             using(var fallbackIcon=ProcessSelection.LoadIcon("nonexistent-process-for-icon-test"))if(fallbackIcon.Width<=0||fallbackIcon.Height<=0)throw new Exception("process fallback icon");
+            if(StartupSettings.Command(@"C:\My Apps\BrightnessToggle.exe")!="\"C:\\My Apps\\BrightnessToggle.exe\" --startup"||!StartupSettings.IsStartup(["--startup"])||StartupSettings.IsStartup([]))throw new Exception("startup command");
+            var fakeStartup=new FakeStartup();if(fakeStartup.IsEnabled().Result||!fakeStartup.SetEnabled(true).Result||fakeStartup.SetEnabled(false).Result)throw new Exception("startup toggle");
             string obscured="A\uFEFFR\uFEFFC\u200B\u2005Ra\u200Bid\uFEFFers";
             if(!ProcessSelection.SearchMatches("PioneerGame",obscured,"ARC Raiders")||!ProcessSelection.SearchMatches("PioneerGame",obscured,"ARC")||!ProcessSelection.SearchMatches("PioneerGame",obscured,"pioneer"))throw new Exception("invisible title search");
             if(!ProcessSelection.SearchMatches("PioneerGame","","ARC")||!ProcessSelection.SearchMatches("PioneerGame","","PioneerGame.exe")||!ProcessSelection.SearchMatches("PioneerGame",obscured,"Pioneer Raiders")||!ProcessSelection.SearchMatches("sample","Second window title","Second"))throw new Exception("process and title search");
@@ -470,7 +517,7 @@ internal static class Tests
             legacy.Normalize();legacy.Normalize();
             if(legacy.Presets[0].Amount!=0||legacy.Presets[1].Amount!=25||legacy.Presets[2].Amount!=50||legacy.Presets[4].Amount!=45)throw new Exception("legacy migration");
             if(GammaBrightness.Curve(baseline,80)[128]<=baseline[128])throw new Exception("plus 80 curve");
-            using(var form=new MainForm(config,fake,true)){form.Show();Application.DoEvents();if(form.Active!=0||fake.Amount!=0)throw new Exception("startup default zero");
+            using(var form=new MainForm(config,fake,true,startup:new FakeStartup())){form.Show();Application.DoEvents();if(form.Active!=0||fake.Amount!=0)throw new Exception("startup default zero");
             if(L.Language!="en"||!form.Text.Contains("Gamma presets"))throw new Exception("default English");
             form.SetLanguage("ko");if(!form.Text.Contains("밝기 프리셋")||config.Language!="ko")throw new Exception("Korean switch");
             var roundtrip=JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(config));if(roundtrip?.Language!="ko"||roundtrip.Presets[2].BlackPreservation!=25||roundtrip.Presets[2].Contrast!=10)throw new Exception("language save");
@@ -487,9 +534,9 @@ internal static class Tests
                 using var shot=new Bitmap(osd.Width,osd.Height);osd.DrawToBitmap(shot,new Rectangle(Point.Empty,osd.Size));shot.Save(Path.Combine(Path.GetDirectoryName(path)!,"brightness-osd.png"));osd.Hide();
             }
             form.Size=new Size(1366,900);Application.DoEvents();using(var image=new Bitmap(form.Width,form.Height)){form.DrawToBitmap(image,new Rectangle(Point.Empty,form.Size));image.Save(Path.ChangeExtension(path,".png"));}
-            form.Next();if(form.Active!=1||fake.Amount!=25)throw new Exception("cycle level 1");form.Next();if(form.Active!=2||fake.Amount!=50)throw new Exception("cycle level 2");form.Next();if(form.Active!=3||fake.Amount!=75)throw new Exception("cycle level 3");form.Next();if(form.Active!=0||fake.Amount!=0)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=5)throw new Exception("add");form.Apply(4);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=4)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
+            form.Next();if(form.Active!=1||fake.Amount!=25)throw new Exception("cycle level 1");form.Next();if(form.Active!=2||fake.Amount!=50)throw new Exception("cycle level 2");form.Next();if(form.Active!=3||fake.Amount!=75)throw new Exception("cycle level 3");form.Next();if(form.Active!=0||fake.Amount!=0)throw new Exception("cycle default");form.AddPreset();if(config.Presets.Count!=5)throw new Exception("add");form.Apply(4);form.RemovePreset();if(form.Active!=0||config.Presets.Count!=4)throw new Exception("remove active");fake.Fail=true;if(form.Apply(1)||form.Active!=0)throw new Exception("failure state");fake.Fail=false;form.Close();if(form.IsDisposed||form.Visible)throw new Exception("tray hide");int beforeOpenCalls=fake.Calls;int beforeOpenPreset=form.Active;form.OpenSettings();Application.DoEvents();if(!form.Visible||form.WindowState!=FormWindowState.Normal||form.Active!=beforeOpenPreset||fake.Calls!=beforeOpenCalls)throw new Exception("tray open must not change preset");form.Exit();if(fake.Restores==0)throw new Exception("restore on exit");}
             var autoConfig=new Config();autoConfig.Normalize();autoConfig.AutoProcessName="Game.exe";autoConfig.AutoSwitchEnabled=true;autoConfig.AutoPresetId=autoConfig.Presets[2].Id;
-            var autoFake=new Fake();using(var autoForm=new MainForm(autoConfig,autoFake,true))
+            var autoFake=new Fake();using(var autoForm=new MainForm(autoConfig,autoFake,true,startup:new FakeStartup()))
             {
                 autoForm.Show();Application.DoEvents();autoForm.EvaluateAuto("GAME");if(autoFake.Amount!=50)throw new Exception("auto enter game");
                 int calls=autoFake.Calls;autoForm.EvaluateAuto("game");if(autoFake.Calls!=calls)throw new Exception("auto repeated application");
@@ -499,7 +546,13 @@ internal static class Tests
                 var saved=JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(autoConfig))!;saved.Normalize();if(!saved.AutoSwitchEnabled||saved.AutoPresetId!=autoConfig.AutoPresetId||!ProcessSelection.Matches(saved.AutoProcessName,"game"))throw new Exception("auto persistence");
                 autoFake.Fail=true;autoForm.EvaluateAuto("other");calls=autoFake.Attempts;autoForm.EvaluateAuto("other");if(autoForm.Active!=2||autoFake.Attempts!=calls)throw new Exception("auto failure state");autoFake.Fail=false;autoConfig.AutoSwitchEnabled=false;autoForm.EvaluateAuto("other");if(autoForm.Active!=2)throw new Exception("disabled auto mode");autoForm.Exit();
             }
-            File.WriteAllText(path,"PASS: Process icon fallback; Invisible Unicode window-title search; Active-process auto switching, Alt+Tab/exit restore, case-insensitive process matching, no repeat application, saved rules and custom values, failure backoff; Four-stage presets, tone controls, monotone curves and endpoints, black preservation, migration and persistence; English default, Korean/English switch, language persistence; default 0%, levels +25%/+50%/+75%, old config migration, startup default, four-stage cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
+            var hiddenFake=new Fake();using(var hidden=new MainForm(new Config(),hiddenFake,true,startInTray:true,startup:new FakeStartup()))
+            {
+                hidden.Show();Application.DoEvents();if(hidden.Visible||hiddenFake.Calls!=1||hiddenFake.Amount!=0)throw new Exception("startup tray initialization");
+                hidden.Show();Application.DoEvents();if(!hidden.Visible||hiddenFake.Calls!=1)throw new Exception("reopen startup tray window");
+                hidden.Exit();
+            }
+            File.WriteAllText(path,"PASS: Tray open preserves preset; Startup command, toggle and hidden tray initialization; Process icon fallback; Invisible Unicode window-title search; Active-process auto switching, Alt+Tab/exit restore, case-insensitive process matching, no repeat application, saved rules and custom values, failure backoff; Four-stage presets, tone controls, monotone curves and endpoints, black preservation, migration and persistence; English default, Korean/English switch, language persistence; default 0%, levels +25%/+50%/+75%, old config migration, startup default, four-stage cycle, gamma curve, add/remove, apply failure state, tray hide, exit restore, OSD. No real display changes made.");
         }catch(Exception ex){File.WriteAllText(path,"FAIL: "+ex);Environment.ExitCode=1;}
     }
 }

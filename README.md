@@ -1,8 +1,8 @@
 ﻿# Brightness Toggle
 
-A lightweight Windows desktop utility for switching SDR screen gamma presets with one key. Brighten dark game scenes, tune black preservation and contrast, or apply a preset automatically while a chosen program is active. Built with C# and WinForms. Current version: **1.0.10**.
+A lightweight Windows desktop utility for switching SDR screen gamma presets with one key. Brighten dark game scenes, tune black preservation and contrast, or apply a preset automatically while a chosen program is active. Built with C# and WinForms. Current version: **1.0.12**.
 
-**[Download 1.0.10 for Windows x64](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.10/BrightnessToggle-1.0.10-win-x64.zip)** · [Release notes](https://github.com/idlepoe/brightness_toggle/releases/tag/v1.0.10) · [All releases](https://github.com/idlepoe/brightness_toggle/releases)
+**[Download 1.0.12 for Windows x64](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.12/BrightnessToggle-1.0.12-win-x64.zip)** · [Release notes](https://github.com/idlepoe/brightness_toggle/releases/tag/v1.0.12) · [All releases](https://github.com/idlepoe/brightness_toggle/releases)
 
 ## Screenshot
 
@@ -21,7 +21,7 @@ The interface groups the preset library, brightness controls, automatic program 
 
 ## Download and run
 
-1. Download [**BrightnessToggle-1.0.10-win-x64.zip**](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.10/BrightnessToggle-1.0.10-win-x64.zip).
+1. Download [**BrightnessToggle-1.0.12-win-x64.zip**](https://github.com/idlepoe/brightness_toggle/releases/download/v1.0.12/BrightnessToggle-1.0.12-win-x64.zip).
 2. Extract the ZIP and run **BrightnessToggle.exe**.
 3. Select your display, then press **F9** to cycle through **Basic (0%)**, **Brightness level 1 (+25%)**, **Brightness level 2 (+50%)**, and **Brightness level 3 (+75%)**.
 
@@ -76,7 +76,7 @@ A notification in the lower-right corner of the target display shows the preset 
 **The X button hides the window to the system tray; it does not exit the application.** A persistent note and a notification explain this behavior.
 
 - Look for the **yellow sun icon** near the Windows clock. It may be inside the hidden-icons menu.
-- Double-click the icon to cycle to the next preset.
+- Left-click the icon to open settings. Clicking or double-clicking does not cycle presets. Use F9 or the tray Next preset command to cycle.
 - Right-click → **Open settings** to reopen the window.
 - Right-click → **Basic (0%)** to restore the original gamma.
 - Right-click → **Exit (restore original gamma)** to fully exit.
@@ -119,7 +119,7 @@ Settings are saved automatically to:
 %LOCALAPPDATA%\BrightnessToggle\settings.json
 ```
 
-To reset settings, exit normally, delete that file, and restart. The app does not register itself to run at Windows sign-in. Packaged Windows apps may have their local settings redirected by Windows.
+To reset settings, exit normally, delete that file, and restart. Enable **Start with Windows** in **Display and hotkey** to run automatically when you sign in. This option is off by default. Automatic launches start in the system tray without opening the settings window; normal launches still open settings. Disable the option to remove startup registration. The portable build registers the current executable path for the current user, so keep it in a permanent folder and toggle the option off/on after moving it. The Store build uses a Windows startup task. If Windows has disabled it through Settings, Task Manager, or policy, follow the in-app message to manage it in Windows Settings > Apps > Startup. Packaged Windows apps may have their local settings redirected by Windows.
 
 ## Build and test
 
@@ -138,6 +138,8 @@ Tests use a fake display backend and do not change the real display. They cover 
 
 ## Release history
 
+- **1.0.12:** Left-clicking the tray icon opens settings instead of changing presets; removed double-click cycling.
+- **1.0.11:** Added optional Start with Windows, tray-only startup launches, and packaged Windows startup-task support.
 - **1.0.10:** Added executable icons to the target process field and process selection list, with a default icon when unavailable.
 - **1.0.9:** Grouped the interface into preset library, brightness controls, automatic program switching, and display/hotkey settings. Fixed clipped Korean labels with adaptive wrapping and scrolling on smaller windows. Process search covers executable names and all visible window titles, supports multiple search terms and ignores invisible Unicode characters. ARC Raiders is also recognized by its PioneerGame process name.
 - **1.0.8:** Fixed process search for window titles containing invisible Unicode characters (such as ARC Raiders / PioneerGame.exe). Added timed active-window process selection.
