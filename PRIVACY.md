@@ -16,6 +16,8 @@ The application stores preset names, gamma correction amounts, black preservatio
 
 The application accesses display gamma controls and registers a global preset-switching hotkey. It does not record general keyboard input, read game data, or inject code into games. For the optional active-program feature and process selector, it reads process names, visible window titles, executable paths for icon extraction, and the foreground window locally. Window titles and executable paths are not saved in settings or sent anywhere. Only the executable name you select and its preset are saved locally. It does not inspect game memory. Original gamma tables are kept in memory to restore the screen on normal exit.
 
+The optional Start with Windows setting uses a Windows startup task in the packaged app. Portable builds register the executable path for the current user. Startup registration stays on the device and can be disabled in the app or Windows startup settings.
+
 ## Deletion and control
 
 Exit the application normally to restore the original gamma settings. You can delete the local settings file to reset the portable application, or uninstall the packaged app using Windows Settings. Local settings and installation details are described in the README.
